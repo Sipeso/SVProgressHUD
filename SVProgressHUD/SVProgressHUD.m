@@ -697,6 +697,10 @@ static const CGFloat SVProgressHUDUndefinedProgress = -1;
         
         [self setNeedsDisplay];
     }
+    
+    //This has been added to have the ability to use the ProgressHUD directly,
+    //without the need, to do the heavy work in a background-thread
+    [[NSRunLoop currentRunLoop] runUntilDate: [NSDate dateWithTimeIntervalSinceNow: 0.0001]];
 }
 
 - (UIImage *)image:(UIImage *)image withTintColor:(UIColor *)color{
