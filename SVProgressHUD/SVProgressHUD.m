@@ -82,14 +82,36 @@ static const CGFloat SVProgressHUDUndefinedProgress = -1;
 
 @implementation SVProgressHUD
 
++(nullable UIWindow *)receiveWindow {
+    UIWindow *returnValue = nil;
+    NSArray <UIWindow *> *arrayWithWindows = [UIApplication sharedApplication].windows;
+    if (arrayWithWindows == nil || arrayWithWindows.count == 0) {
+        NSAssert(false, @"Check Why we don't get any windows");
+    }
+    
+    for (UIWindow   *currentWindow in arrayWithWindows)
+    {
+        if (currentWindow.isKeyWindow) {
+            returnValue = currentWindow;
+            break;
+        }
+    }
+    if (returnValue == nil) {
+        //Maybe a fall back could be
+        returnValue = arrayWithWindows.lastObject;
+    }
+    return returnValue;
+}
+
+
 + (SVProgressHUD*)sharedView {
     static dispatch_once_t once;
     static SVProgressHUD *sharedView;
-    dispatch_once(&once, ^ { sharedView = [[self alloc] initWithFrame:[[UIScreen mainScreen] bounds]]; });
+    dispatch_once(&once, ^ { sharedView = [[self alloc] initWithFrame:[[SVProgressHUD receiveWindow] bounds]]; });
     
     if( sharedView )
     {
-        sharedView.frame = [[UIScreen mainScreen] bounds];
+        sharedView.frame = [[SVProgressHUD receiveWindow] bounds];
     }
     
     return sharedView;
@@ -429,7 +451,7 @@ static const CGFloat SVProgressHUDUndefinedProgress = -1;
 - (void)registerNotifications {
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(positionHUD:)
-                                                 name:UIApplicationDidChangeStatusBarOrientationNotification
+                                                 name:UIDeviceOrientationDidChangeNotification
                                                object:nil];
     
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -464,7 +486,8 @@ static const CGFloat SVProgressHUDUndefinedProgress = -1;
     CGFloat keyboardHeight = 0.0f;
     double animationDuration = 0.0;
     
-    self.frame = UIScreen.mainScreen.bounds;
+    //self.frame = UIScreen.mainScreen.bounds;
+    self.frame = [SVProgressHUD receiveWindow].bounds;
     
     self.backgroundGradientLayer.frame = self.bounds;
     const CGPoint gradientCenter = CGPointMake(self.backgroundGradientLayer.bounds.size.width / 2, self.backgroundGradientLayer.bounds.size.height / 2);
@@ -472,7 +495,15 @@ static const CGFloat SVProgressHUDUndefinedProgress = -1;
     [self.backgroundGradientLayer setNeedsDisplay];
 
 #if !defined(SV_APP_EXTENSIONS)
-    UIInterfaceOrientation orientation = UIApplication.sharedApplication.statusBarOrientation;
+    UIInterfaceOrientation orientation = UIInterfaceOrientationPortrait;
+    UIWindow *windowForStatusBarOrientation = [SVProgressHUD receiveWindow];
+    if (windowForStatusBarOrientation.windowScene == nil) {
+        NSAssert(false, @"check why there is no scene behind the window and maybe change logic");
+    } else if (windowForStatusBarOrientation.windowScene.interfaceOrientation == UIInterfaceOrientationUnknown) {
+        NSAssert(false, @"check why the scene has no orientation and mybe change logic");
+    } else {
+        orientation = windowForStatusBarOrientation.windowScene.interfaceOrientation;
+    }
 #else
     UIInterfaceOrientation orientation = CGRectGetWidth(self.frame) > CGRectGetHeight(self.frame) ? UIInterfaceOrientationLandscapeLeft : UIInterfaceOrientationPortrait;
 #endif
@@ -501,7 +532,7 @@ static const CGFloat SVProgressHUDUndefinedProgress = -1;
     
     CGRect orientationFrame = self.bounds;
 #if !defined(SV_APP_EXTENSIONS)
-    CGRect statusBarFrame = UIApplication.sharedApplication.statusBarFrame;
+    CGRect statusBarFrame = [SVProgressHUD receiveWindow].windowScene.statusBarManager.statusBarFrame;
 #else
     CGRect statusBarFrame = CGRectZero;
 #endif
@@ -589,17 +620,18 @@ static const CGFloat SVProgressHUDUndefinedProgress = -1;
 - (void)showProgress:(float)progress status:(NSString*)string maskType:(SVProgressHUDMaskType)hudMaskType {
     if(!self.overlayView.superview){
 #if !defined(SV_APP_EXTENSIONS)
-        NSEnumerator *frontToBackWindows = [UIApplication.sharedApplication.windows reverseObjectEnumerator];
-        for (UIWindow *window in frontToBackWindows){
-            BOOL windowOnMainScreen = window.screen == UIScreen.mainScreen;
-            BOOL windowIsVisible = !window.hidden && window.alpha > 0;
-            BOOL windowLevelNormal = window.windowLevel == UIWindowLevelNormal;
-            
-            if (windowOnMainScreen && windowIsVisible && windowLevelNormal) {
-                [window addSubview:self.overlayView];
-                break;
-            }
-        }
+        [[SVProgressHUD receiveWindow] addSubview:self.overlayView];
+//        NSEnumerator *frontToBackWindows = [UIApplication.sharedApplication.windows reverseObjectEnumerator];
+//        for (UIWindow *window in frontToBackWindows){
+//            BOOL windowOnMainScreen = window.screen == UIScreen.mainScreen;
+//            BOOL windowIsVisible = !window.hidden && window.alpha > 0;
+//            BOOL windowLevelNormal = window.windowLevel == UIWindowLevelNormal;
+//
+//            if (windowOnMainScreen && windowIsVisible && windowLevelNormal) {
+//                [window addSubview:self.overlayView];
+//                break;
+//            }
+//        }
 #else
         if(SVProgressHUDExtensionView){
             [SVProgressHUDExtensionView addSubview:self.overlayView];
@@ -666,7 +698,7 @@ static const CGFloat SVProgressHUDUndefinedProgress = -1;
         self.backgroundGradientLayer.frame = self.bounds;
         const CGPoint gradientCenter = CGPointMake(self.backgroundGradientLayer.bounds.size.width / 2, self.backgroundGradientLayer.bounds.size.height / 2);
         self.backgroundGradientLayer.gradientCenter = gradientCenter;
-        [self.backgroundGradientLayer setNeedsDisplay];    
+        [self.backgroundGradientLayer setNeedsDisplay];
     }
 
     if(self.alpha != 1 || self.hudView.alpha != 1) {
@@ -785,14 +817,14 @@ static const CGFloat SVProgressHUDUndefinedProgress = -1;
                              
                              [[NSNotificationCenter defaultCenter] removeObserver:self];
                              [self cancelRingLayerAnimation];
-                             [_hudView removeFromSuperview];
-                             _hudView = nil;
+                             [self->_hudView removeFromSuperview];
+                             self->_hudView = nil;
                              
-                             [_overlayView removeFromSuperview];
-                             _overlayView = nil;
+                             [self->_overlayView removeFromSuperview];
+                             self->_overlayView = nil;
                              
-                             [_indefiniteAnimatedView removeFromSuperview];
-                             _indefiniteAnimatedView = nil;
+                             [self->_indefiniteAnimatedView removeFromSuperview];
+                             self->_indefiniteAnimatedView = nil;
                              
                              [self.backgroundGradientLayer removeFromSuperlayer];
                              self.backgroundGradientLayer = nil;
@@ -805,7 +837,7 @@ static const CGFloat SVProgressHUDUndefinedProgress = -1;
                              
                              // Tell the rootViewController to update the StatusBar appearance
 #if !defined(SV_APP_EXTENSIONS)
-                             UIViewController *rootController = [[UIApplication sharedApplication] keyWindow].rootViewController;
+                             UIViewController *rootController = [SVProgressHUD receiveWindow].rootViewController;
                              if ([rootController respondsToSelector:@selector(setNeedsStatusBarAppearanceUpdate)]) {
                                  [rootController setNeedsStatusBarAppearanceUpdate];
                              }
@@ -916,7 +948,7 @@ static const CGFloat SVProgressHUDUndefinedProgress = -1;
 
 - (UIControl *)overlayView {
     if(!_overlayView) {
-        _overlayView = [[UIControl alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        _overlayView = [[UIControl alloc] initWithFrame:[SVProgressHUD receiveWindow].bounds];
         _overlayView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         _overlayView.backgroundColor = [UIColor clearColor];
         [_overlayView addTarget:self action:@selector(overlayViewDidReceiveTouchEvent:forEvent:) forControlEvents:UIControlEventTouchDown];
